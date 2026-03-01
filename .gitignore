@@ -206,9 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# MacOS
+.DS_Store
 
-.DS_Store #MacOS
-.ipynb_checkpoints # Jupyter notebook
+# Jupyter Notebook
+.ipynb_checkpoints
 
 # Ignorar todos los files que se hacen al compilar los .tex
 *.aux
