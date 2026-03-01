@@ -220,3 +220,5 @@ __marimo__/
 *.fls
 *.log
 *.out
+*.bcf
+*.run.xml
