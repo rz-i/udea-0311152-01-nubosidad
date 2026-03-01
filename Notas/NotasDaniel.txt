@@ -1,0 +1,34 @@
+Fecha de Actualización: 2026-03-01 18:28:36.422102-05:00
+
+- Creación de la carpeta "rz-i/udea-0311152-01-nubosidad/Reporte1" donde incluyo el archivo "Reporte1.pdf" tipo template con normas APA7 (como borrador inicial). Usé notebooklm para adaptar el template de overleaf a nuestro caso. Referencia: https://www.overleaf.com/latex/templates/apa7-format-latex-starter-simple-version/nvpmtgxmrshk 
+
+- Creación de la licencia "MIT" para formalizar los derechos de autor de los integrantes del grupo en este proyecto
+
+- Modificación del archivo "README.md" para mostrar claramente el contenido y objetivo del repositorio. Usé GitHub Copilot para crearlo.
+
+- Modificación del Archivo ".gitignore" para ignorar:
+	- ".DS_Store" Archivo oculto que aparece en máquinas MacOS
+	- ".ipynb_checkpoints" Carpeta de respaldo que aparece al trabajar con Jupyter Notebook. Nos es útil tenerla de manera local, pero no nos sirve tenerla en GitHub.
+	- Varios archivos con diferentes tipos de extensiones que se generan al compilar un archivo .tex. Son archivos que nos sirven de manera local para guardar cierto tipo de información, para garantizar la validación del documento. Agregarlos generaría ruido innecesario en el repositorio frente al versionado.
+
+- Uso del comando "git rm -r --cached ." para borrar el caché anterior a la actualización del archivo .gitignore
+
+- Creación de los archivos de Notas, en formato .txt para cada integrante del grupo.
+- Estructura actual del repositorio:
+
+├── LICENSE
+├── Notas
+│   ├── NotasCamilo.txt
+│   ├── NotasDaniel.txt
+│   ├── NotasLucca.txt
+│   └── NotasRuben.txt
+├── README.md
+├── Reporte1
+│   ├── Reporte1.pdf
+│   └── Reporte1.tex
+└── src
+    └── main.ipynb
+
+FIN 2026-03-01 18:33:45.544691-05:00
+
+
