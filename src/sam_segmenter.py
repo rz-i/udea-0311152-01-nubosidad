@@ -211,37 +211,36 @@ def collect_observations_from_csv(
             yield obs_id, timestamp, direction, str(url_val).strip()
 
 
-def main() -> int:
-    """Orchestrate sky segmentation, metrics, and outputs."""
-    import yaml
+def run_segmentation(
+    input_csv: Path,
+    output_csv: Path,
+    output_masks_dir: Path,
+    checkpoint_path: str | Path = "models/sam_vit_b_01ec64.pth",
+    device: str | torch.device = "mps",
+    project_root: Path | None = None,
+) -> int:
+    """
+    Run sky segmentation pipeline on observations from input CSV.
+    Returns 0 on success, 1 on failure.
+    """
+    root = project_root or _PROJECT_ROOT
+    in_path = input_csv if input_csv.is_absolute() else root / input_csv
+    out_path = output_csv if output_csv.is_absolute() else root / output_csv
+    masks_dir = output_masks_dir if output_masks_dir.is_absolute() else root / output_masks_dir
 
-    root = _PROJECT_ROOT
-    config_path = root / "config.yaml"
-    config: dict = {}
-    if config_path.exists():
-        with open(config_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f) or {}
-    sam_cfg = config.get("sam", {}) or {}
-    seg_cfg = config.get("segmentation", {}) or {}
-    checkpoint = sam_cfg.get("checkpoint", "models/sam_vit_b_01ec64.pth")
-    device_name = sam_cfg.get("device", "mps")
-    input_csv = root / (seg_cfg.get("input_csv", "data/aggregated_globe_data.csv"))
-    output_csv = root / (seg_cfg.get("output_csv", "data/segmented_metrics.csv"))
-    output_masks_dir = root / (seg_cfg.get("output_masks_dir", "data/output_masks"))
-
-    if not input_csv.exists():
-        logger.error("Input CSV not found: %s", input_csv)
+    if not in_path.exists():
+        logger.error("Input CSV not found: %s", in_path)
         return 1
 
-    logger.info("Loading SAM model (device=%s)...", device_name)
+    logger.info("Loading SAM model (device=%s)...", device)
     try:
-        mask_generator = load_sam_model(checkpoint, device_name)
+        mask_generator = load_sam_model(checkpoint_path, device)
     except FileNotFoundError as e:
         logger.error("%s", e)
         return 1
 
     results: list[dict] = []
-    for obs_id, timestamp, direction, url in collect_observations_from_csv(input_csv):
+    for obs_id, timestamp, direction, url in collect_observations_from_csv(in_path):
         image = load_image_from_url(url)
         if image is None:
             continue
@@ -259,7 +258,7 @@ def main() -> int:
             "mask_pixel_count": metrics["mask_pixel_count"],
         }
         results.append(row)
-        thumb_path = output_masks_dir / f"{obs_id}_{direction}.png"
+        thumb_path = masks_dir / f"{obs_id}_{direction}.png"
         save_verification_thumbnail(image, mask, thumb_path)
         logger.info("Processed %s %s: mean_index=%.4f", obs_id, direction, row["mean_index"])
 
@@ -267,12 +266,7 @@ def main() -> int:
         logger.warning("No observations processed")
     else:
         out_df = pd.DataFrame(results)
-        output_csv.parent.mkdir(parents=True, exist_ok=True)
-        out_df.to_csv(output_csv, index=False)
-        logger.info("Saved %d rows to %s", len(out_df), output_csv)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_df.to_csv(out_path, index=False)
+        logger.info("Saved %d rows to %s", len(out_df), out_path)
     return 0
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    raise SystemExit(main())
