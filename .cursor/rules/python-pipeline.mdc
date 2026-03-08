@@ -1,0 +1,12 @@
+---
+description: Coding conventions for the research pipeline
+globs: ["src/**/*.py"]
+alwaysApply: true
+---
+
+# Python Pipeline Standards
+- Use modular, version-control-friendly scripts (.py) over notebooks.
+- Use `torch.device('mps')` for Mac M3 acceleration in PyTorch/SAM tasks.
+- Keep data processing logged to CSVs; use `pandas` for data handling.
+- Aim for clean, readable code with type hints where possible.
+- Never hardcode paths; use relative paths from the project root.

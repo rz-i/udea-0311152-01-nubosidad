@@ -1,0 +1,11 @@
+---
+description: Standards for astronomical research and atmospheric analysis
+globs: ["**/*.py", "**/*.md", "**/*.tex"]
+alwaysApply: true
+---
+
+# Astronomy Research Standards
+- Use formal scientific terminology (e.g., Airmass, Zenith, Rayleigh Scattering, Mie Scattering).
+- All plots must include axis labels with SI units and clear legends.
+- Adhere to AASTeX631 standards for all LaTeX documentation.
+- Prioritize academic clarity and conciseness in scientific reporting.
