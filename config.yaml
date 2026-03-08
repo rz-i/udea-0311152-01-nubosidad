@@ -25,3 +25,13 @@ location:
 output:
   directory: "data"
   filename: "aggregated_globe_data.csv"
+
+# SAM segmentation
+sam:
+  checkpoint: "models/sam_vit_b_01ec64.pth"
+  device: "mps"
+
+segmentation:
+  input_csv: "data/aggregated_globe_data.csv"
+  output_csv: "data/segmented_metrics.csv"
+  output_masks_dir: "data/output_masks"
