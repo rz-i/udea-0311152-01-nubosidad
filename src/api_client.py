@@ -102,7 +102,7 @@ def fetch(
                 dfs.append(df)
 
     elif mode == "location" and lat is not None and lon is not None and radius_km is not None:
-        loc_url = f"{url_base}point/distance/?lat={lat}&lon={lon}&distancekm={radius_km}"
+        loc_url = f"{url_base}point/distance/?lat={lat}&lon={lon}&distanceinkm={radius_km}"
         df = _fetch_endpoint(loc_url, params, timeout)
         if df is not None and not df.empty:
             dfs.append(df)
