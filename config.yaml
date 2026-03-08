@@ -1,0 +1,29 @@
+# Project: UdeA Atmospheric Nowcasting (Astronomy Class)
+# Global settings for data retrieval and processing
+
+api:
+  base_url: "https://api.globe.gov/search/v1/marss/measurements/cloud/"
+  timeout: 30 # seconds
+
+search_defaults:
+  radius_km: 5
+  start_date: "2026-02-01"
+  end_date: null # If null, script should default to today's date
+
+# Team and User targeting for aggregation
+targets:
+  teams:
+    - "Udea0311152"
+  usernames:
+    - "student_01"
+    - "student_02"
+
+# Location settings (Medellín/UdeA coordinates)
+location:
+  lat: 6.26
+  lon: -75.56
+
+# Output settings
+output:
+  directory: "data"
+  filename: "aggregated_globe_data.csv"
