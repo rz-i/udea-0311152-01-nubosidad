@@ -222,3 +222,6 @@ __marimo__/
 *.out
 *.bcf
 *.run.xml
+
+# Meta's model checkpoint files
+models/*.pth
