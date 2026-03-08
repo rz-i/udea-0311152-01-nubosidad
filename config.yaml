@@ -15,8 +15,6 @@ targets:
   teams:
     - "Udea0311152"
   usernames:
-    - "student_01"
-    - "student_02"
 
 # Location settings (Medellín/UdeA coordinates)
 location:
