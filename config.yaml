@@ -10,13 +10,18 @@ search_defaults:
   start_date: "2026-02-01"
   end_date: null # If null, script should default to today's date
 
-# Team and User targeting for aggregation
+# Retrieval mode: "targets" (teams/usernames) or "location" (lat/lon/radius)
+# Overridden by --targets or --location CLI flags
+retrieval:
+  mode: "targets"
+
+# Team and User targeting for aggregation (used when mode=targets)
 targets:
   teams:
     - "Udea0311152"
   usernames:
 
-# Location settings (Medellín/UdeA coordinates)
+# Location settings (Medellín/UdeA coordinates, used when mode=location)
 location:
   lat: 6.26
   lon: -75.56
