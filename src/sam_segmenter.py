@@ -14,7 +14,21 @@ import torch
 # MPS requires float32; float64 is not fully supported
 torch.set_default_dtype(torch.float32)
 
+# Default grid size and batch size for SAM (avoids internal float64 grid creation)
+SAM_POINTS_PER_SIDE = 24
+SAM_POINTS_PER_BATCH = 64
+
 logger = logging.getLogger(__name__)
+
+
+def _build_point_grid_float32(n_per_side: int) -> np.ndarray:
+    """Build a 2D point grid in [0,1]^2 with explicit float32 to avoid MPS float64 errors."""
+    offset = 1.0 / (2.0 * n_per_side)
+    points_one_side = np.linspace(offset, 1.0 - offset, n_per_side, dtype=np.float32)
+    points_x = np.tile(points_one_side[None, :], (n_per_side, 1))
+    points_y = np.tile(points_one_side[:, None], (1, n_per_side))
+    points = np.stack([points_x, points_y], axis=-1).reshape(-1, 2)
+    return points
 
 # Project root
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -60,8 +74,10 @@ def _should_skip_caption(caption: str | object) -> bool:
 def load_sam_model(
     checkpoint_path: str | Path,
     device: str | torch.device = "mps",
+    points_per_side: int = SAM_POINTS_PER_SIDE,
+    points_per_batch: int = SAM_POINTS_PER_BATCH,
 ) -> "SamAutomaticMaskGenerator":
-    """Load SAM vit_b and return SamAutomaticMaskGenerator on specified device."""
+    """Load SAM vit_b and return SamAutomaticMaskGenerator with float32 point grid for MPS."""
     torch.set_default_dtype(torch.float32)
     from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
@@ -78,10 +94,19 @@ def load_sam_model(
     if str(device) == "mps" and not torch.backends.mps.is_available():
         logger.warning("MPS not available; falling back to CPU")
         dev = torch.device("cpu")
+
+    point_grid = _build_point_grid_float32(points_per_side)
+    point_grids = [point_grid]
+
     sam = sam_model_registry["vit_b"](checkpoint=str(path))
     sam = sam.float()
     sam = sam.to(dev)
-    return SamAutomaticMaskGenerator(sam)
+    return SamAutomaticMaskGenerator(
+        sam,
+        points_per_side=None,
+        point_grids=point_grids,
+        points_per_batch=points_per_batch,
+    )
 
 
 def _mask_to_numpy(mask: "np.ndarray | torch.Tensor") -> np.ndarray:
@@ -90,16 +115,37 @@ def _mask_to_numpy(mask: "np.ndarray | torch.Tensor") -> np.ndarray:
         return mask.detach().cpu().to(torch.float32).numpy()
     return np.asarray(mask)
 
-
-def get_sky_mask(
-    image: np.ndarray,
-    mask_generator: "SamAutomaticMaskGenerator",
-) -> np.ndarray | None:
+def get_sky_mask(image: np.ndarray, mask_generator: "SamAutomaticMaskGenerator") -> np.ndarray | None:
     """
     Generate masks and select sky region: largest contiguous region in upper half.
+    Uses inference_mode and MPS autocast to keep all intermediates in float32.
     Returns binary mask (H, W) or None if no suitable mask found.
     """
-    masks = mask_generator.generate(image)
+
+    # 1. Get the current device from the model
+    model_dev = next(mask_generator.predictor.model.parameters()).device
+    
+    # 2. Attempt the MPS segmentation
+    try:
+        with torch.inference_mode():
+            # If on MPS, we still attempt the autocast block
+            if model_dev.type == "mps":
+                with torch.amp.autocast(device_type="mps", enabled=True):
+                    masks = mask_generator.generate(image)
+            else:
+                masks = mask_generator.generate(image)
+    except TypeError as e:
+        if "float64" in str(e) and model_dev.type == "mps":
+            logger.warning("MPS float64 error detected. Falling back to CPU for segmentation.")
+            
+            # Switch model to CPU temporarily
+            mask_generator.predictor.model.to("cpu")
+            masks = mask_generator.generate(image)
+            # Switch back
+            mask_generator.predictor.model.to("mps")
+        else:
+            raise e
+
     if not masks:
         logger.warning("No masks generated")
         return None
