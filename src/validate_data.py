@@ -4,85 +4,99 @@ import argparse
 import matplotlib.pyplot as plt
 
 def analyze_data(df, interval_min=10):
-    print("--- Diagnostic Report ---")
+    """
+    Performs a dry-run diagnostic of the data health without making changes.
+    """
+    print("--- Data Diagnostic Report (Pre-Cleaning) ---")
 
-    # 1. Integrity Check (Step 1)
-    print("\nIntegrity Check:")
-    print(f"Total records: {len(df)}")
-    print(f"Missing values:\n{df.isnull().sum()}")
+    # 1. Integrity Check
+    print(f"\n[INFO] Total records found: {len(df)}")
     
-    if df.isnull().values.any():
-        print("ALERT: Missing values detected in the CSV.")
-    
-    # 2. Duplicates
+    # 2. Duplicate Detection
     dupes = df[df.duplicated(subset=['timestamp', 'direction'], keep=False)]
     if not dupes.empty:
-        print(f"\n[ALERT] {len(dupes)} duplicate records found:")
-        print(dupes[['timestamp', 'direction']].head(10))
+        print(f"\n[ALERT] {len(dupes)} records identified for merging (same timestamp & direction).")
     
-    # 3. Outliers (IQR Method)
+    # 3. Outlier Identification (IQR Method)
     Q1 = df['mean_index'].quantile(0.25)
     Q3 = df['mean_index'].quantile(0.75)
     IQR = Q3 - Q1
     lower, upper = Q1 - 1.5 * IQR, Q3 + 1.5 * IQR
     outliers = df[(df['mean_index'] < lower) | (df['mean_index'] > upper)]
-    print(f"\n[INFO] Statistical Outliers (IQR method): {len(outliers)} entries")
-    print(f"Bounds: [{lower:.4f}, {upper:.4f}]")
-    print(outliers[['timestamp', 'direction']])
+    print(f"\n[INFO] Statistical outliers detected: {len(outliers)}")
+    print(f"Logical Bounds: [{lower:.4f} to {upper:.4f}]")
 
-    # 4. Time Gaps
-    # Ensure timestamp is datetime
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # 4. Temporal Gap Analysis
     df = df.sort_values('timestamp')
     df['diff'] = df['timestamp'].diff()
-    threshold = pd.Timedelta(minutes=interval_min * 2)
-    gaps = df[df['diff'] > threshold]
-    print(f"\n[INFO] Detected {len(gaps)} gaps > {interval_min * 2} minutes.")
-    if not gaps.empty:
-        print("Largest gaps:")
-        print(gaps[['timestamp', 'diff']].sort_values('diff', ascending=False).head(5))
+    gap_threshold = pd.Timedelta(minutes=interval_min * 2)
+    significant_gaps = df[df['diff'] > gap_threshold]
+    print(f"\n[INFO] Data gaps > {interval_min * 2} min: {len(significant_gaps)}")
+    if not significant_gaps.empty:
+        print("Largest identified gaps:")
+        print(significant_gaps[['timestamp', 'diff']].sort_values('diff', ascending=False).head(3))
 
-    # 4. Summary Report
-    print("\nSummary Report:")
-    print(f"Mean Sky Index: {df['mean_index'].mean():.3f}")
-    print(f"Index per direction:\n{df.groupby('direction')['mean_index'].mean()}")
-    print(f"\nStats per direction:\n{df.groupby('direction')['mean_index'].describe()}")
+def clean_and_merge(df):
+    """
+    Processes the data: averages duplicates, filters outliers, and removes low-quality masks.
+    """
+    print("\n[EXECUTION] Starting data cleaning and consolidation...")
     
-    # 5. Distribution Check (Quick Plausibility)
-    print("\nDistribution Summary:")
-    print(df['mean_index'].describe())
+    # 1. Merge Duplicates by Averaging
+    # Using mean() on metrics reduces random observer error for simultaneous captures.
+    initial_count = len(df)
+    df_merged = df.groupby(['timestamp', 'direction']).agg({
+        'observation_id': 'first', # Keep the first ID as reference
+        'mean_index': 'mean',
+        'std_dev': 'mean',
+        'mask_pixel_count': 'mean'
+    }).reset_index()
+    print(f"-> Consolidated duplicates: reduced from {initial_count} to {len(df_merged)} records.")
 
-
-    # 5. Histogram for Plausibility
-    plt.figure(figsize=(8, 5))
-    plt.hist(df['mean_index'].dropna(), bins=30, color='skyblue', edgecolor='black')
-    plt.title("Distribution of Mean Sky Index")
-    plt.xlabel("Sky Index Value")
-    plt.ylabel("Frequency")
-    plt.savefig('data/index_distribution.png')
-    plt.show()
-
-def clean_data(df):
-    print("\n[ACTION] Cleaning data...")
-    # Remove duplicates, keeping the first occurrence
-    df = df.drop_duplicates(subset=['timestamp', 'direction'])
-    # Remove IQR outliers
-    Q1, Q3 = df['mean_index'].quantile(0.25), df['mean_index'].quantile(0.75)
+    # 2. Apply Statistical and Quality Filters
+    Q1 = df_merged['mean_index'].quantile(0.25)
+    Q3 = df_merged['mean_index'].quantile(0.75)
     IQR = Q3 - Q1
-    df = df[(df['mean_index'] >= Q1 - 1.5 * IQR) & (df['mean_index'] <= Q3 + 1.5 * IQR)]
-    return df
+    lower, upper = Q1 - 1.5 * IQR, Q3 + 1.5 * IQR
+    
+    # Keep only records within IQR bounds AND with enough sky area (> 500 pixels)
+    df_clean = df_merged[
+        (df_merged['mean_index'] >= lower) & 
+        (df_merged['mean_index'] <= upper) & 
+        (df_merged['mask_pixel_count'] > 500)
+    ].copy()
+    
+    print(f"-> Removed {len(df_merged) - len(df_clean)} records (outliers or insufficient mask area).")
+    return df_clean
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--clean", action="store_true", help="Clean data and save as new file")
+    parser = argparse.ArgumentParser(description="Validate and clean sky segmentation metrics.")
+    parser.add_argument("--clean", action="store_true", help="Merge duplicates and save cleaned file.")
     args = parser.parse_args()
 
-    df = pd.read_csv('data/segmented_metrics.csv')
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # Data Loading
+    try:
+        data_path = 'data/segmented_metrics.csv'
+        df = pd.read_csv(data_path)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    except FileNotFoundError:
+        print(f"Error: {data_path} not found. Ensure the segmentation script has finished.")
+        exit(1)
     
     if args.clean:
-        df_clean = clean_data(df)
-        df_clean.to_csv('data/segmented_metrics_cleaned.csv', index=False)
-        print("Done! Saved to data/segmented_metrics_cleaned.csv")
+        df_final = clean_and_merge(df)
+        output_path = 'data/segmented_metrics_cleaned.csv'
+        df_final.to_csv(output_path, index=False)
+        print(f"\n[SUCCESS] Analysis-ready file saved: '{output_path}'")
+        
+        # Generate final distribution plot for the paper
+        plt.figure(figsize=(8, 5))
+        plt.hist(df_final['mean_index'], bins=20, color='royalblue', edgecolor='white', alpha=0.8)
+        plt.title("Final Sky Index Distribution (Averaged & Cleaned)")
+        plt.xlabel("Sky Index (Blue / [Green + Red])")
+        plt.ylabel("Frequency")
+        plt.grid(axis='y', linestyle='--', alpha=0.6)
+        plt.savefig('data/final_distribution.png')
+        print("-> Distribution histogram saved to 'data/final_distribution.png'")
     else:
         analyze_data(df)
