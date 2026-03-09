@@ -11,6 +11,9 @@ import pandas as pd
 import requests
 import torch
 
+# MPS requires float32; float64 is not fully supported
+torch.set_default_dtype(torch.float32)
+
 logger = logging.getLogger(__name__)
 
 # Project root
@@ -59,6 +62,7 @@ def load_sam_model(
     device: str | torch.device = "mps",
 ) -> "SamAutomaticMaskGenerator":
     """Load SAM vit_b and return SamAutomaticMaskGenerator on specified device."""
+    torch.set_default_dtype(torch.float32)
     from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
     path = Path(checkpoint_path)
@@ -71,12 +75,20 @@ def load_sam_model(
             "and place in models/sam_vit_b_01ec64.pth"
         )
     dev = torch.device(device)
-    if device == "mps" and not torch.backends.mps.is_available():
+    if str(device) == "mps" and not torch.backends.mps.is_available():
         logger.warning("MPS not available; falling back to CPU")
         dev = torch.device("cpu")
     sam = sam_model_registry["vit_b"](checkpoint=str(path))
-    sam.to(dev)
+    sam = sam.float()
+    sam = sam.to(dev)
     return SamAutomaticMaskGenerator(sam)
+
+
+def _mask_to_numpy(mask: "np.ndarray | torch.Tensor") -> np.ndarray:
+    """Convert mask to numpy, handling tensors for MPS compatibility."""
+    if hasattr(mask, "detach"):
+        return mask.detach().cpu().to(torch.float32).numpy()
+    return np.asarray(mask)
 
 
 def get_sky_mask(
@@ -98,6 +110,7 @@ def get_sky_mask(
         seg = ann.get("segmentation")
         if seg is None:
             continue
+        seg = _mask_to_numpy(seg)
         bbox = ann.get("bbox", [0, 0, w, h])
         x, y, bw, bh = bbox
         y_center = y + bh / 2.0
@@ -108,9 +121,13 @@ def get_sky_mask(
         logger.warning("No mask in upper half; using largest overall")
         best = max(masks, key=lambda m: int(m.get("area", 0)))
         seg = best.get("segmentation")
-        return seg if seg is not None else None
+        if seg is None:
+            return None
+        seg = _mask_to_numpy(seg)
+        return seg.astype(bool) if seg.dtype != bool else seg
     _, best_mask = max(candidates, key=lambda t: t[0])
-    return best_mask.astype(bool) if hasattr(best_mask, "astype") else np.asarray(best_mask, dtype=bool)
+    arr = _mask_to_numpy(best_mask)
+    return arr.astype(bool) if arr.dtype != bool else arr
 
 
 def calculate_metrics(image: np.ndarray, mask: np.ndarray) -> dict:

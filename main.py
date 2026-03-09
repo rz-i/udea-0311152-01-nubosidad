@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+# Ensure float32 default for MPS compatibility (float64 not fully supported)
+import torch
+torch.set_default_dtype(torch.float32)
+
 import argparse
 import logging
 import sys
