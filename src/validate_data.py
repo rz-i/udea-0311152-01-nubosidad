@@ -2,6 +2,31 @@ import pandas as pd
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_iqr_outliers(data, column_name):
+    plt.figure(figsize=(10, 6))
+    
+    # Calculate IQR
+    Q1 = data[column_name].quantile(0.25)
+    Q3 = data[column_name].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    
+    # Identify outliers
+    outliers = data[(data[column_name] < lower_bound) | (data[column_name] > upper_bound)]
+    
+    # Create the boxplot
+    sns.boxplot(y=data[column_name], color='skyblue')
+    
+    # Overlay outliers as red dots
+    plt.scatter(x=[0]*len(outliers), y=outliers[column_name], color='red', label='Outliers (Removed)')
+    
+    plt.title(f'Detección de outliers en {column_name} (Método IQR)')
+    plt.legend()
+    plt.savefig("paper/figures/iqr_outliers.png")
+    plt.show()
 
 def analyze_data(df, interval_min=10):
     """
@@ -25,6 +50,8 @@ def analyze_data(df, interval_min=10):
     outliers = df[(df['mean_index'] < lower) | (df['mean_index'] > upper)]
     print(f"\n[INFO] Statistical outliers detected: {len(outliers)}")
     print(f"Logical Bounds: [{lower:.4f} to {upper:.4f}]")
+
+    plot_iqr_outliers(df, 'mean_index')
 
     # 4. Temporal Gap Analysis
     df = df.sort_values('timestamp')
